@@ -1,0 +1,196 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Chamber A — Time Series Chart</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --ink:#12122d;
+      --muted:#475569;
+      --stroke:#e5e7eb;
+      --card:#ffffff;
+    }
+    body {
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg,#a1c4fd 0%,#c2e9fb 100%);
+      color: var(--ink);
+    }
+
+    .navbar {
+        height: 64px;
+        background: #fff;
+        border-bottom: 1px solid var(--stroke);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,.08);
+        }
+
+        .navbar .logo {
+        height: 40px;
+        }
+
+        .nav-link {
+        text-decoration: none;
+        color: var(--ink);
+        }
+
+        .nav-icon {
+        display: flex;
+        flex-direction: column; /* icon above, text below */
+        align-items: center;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+        }
+
+        .nav-icon i {
+        font-size: 18px;
+        margin-bottom: 4px;
+        }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: center;   /* centers the heading */
+  position: relative;        /* allows absolute positioning for dropdown */
+  margin-bottom: 10px;
+}
+
+header h2 {
+  margin-top:5px;
+  font-size: 24px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  
+}
+
+header .controls {
+  position: absolute;
+  right: 10px;
+  top: 40%;
+  transform: translateY(-50%);  /* vertical centering */
+}
+
+header label {
+  font-size: 14px;
+  margin-right: 5px;
+  font-weight: 600;
+  color: #444;
+}
+
+header select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+    /* Chart */
+    canvas {
+      width: 100% !important;
+      max-width: 1100px;
+      height: 500px !important;
+      margin: auto;
+      display: block;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.10);
+      padding: 16px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+  <img src="{% static 'logo.webp' %}" alt="Logo" class="logo">
+
+  <a href="{% url 'sensor_data_page' %}" class="nav-link">
+    <div class="nav-icon">
+      <i class="fa-solid fa-database"></i>
+      <span>Sensor Data</span>
+    </div>
+  </a>
+</nav>
+
+<!-- Page Header -->
+<header>
+  <h2><i class="fa-solid fa-chart-line"></i> Chamber A — Time Series Chart</h2>
+  <div class="controls">
+    <label for="every">Every</label>
+    <select id="every">
+      <option value="1m">1 minute</option>
+      <option value="2m">2 minutes</option>
+      <option value="5m">5 minutes</option>
+      <option value="10m">10 minutes</option>
+      <option value="20m">20 minutes</option>
+      <option value="30m">30 minutes</option>
+      <option value="45m">45 minutes</option>
+      <option value="60m">1 hour</option>
+      <option value="2h">2 hours</option>
+      <option value="3h">3 hours</option>
+      <option value="4h">4 hours</option>
+      <option value="5h">5 hours</option>
+      <option value="6h">6 hours</option>
+      <option value="12h">12 hours</option>
+    </select>
+  </div>
+</header>
+  <!-- Chart -->
+  <canvas id="timeChart"></canvas>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/js/all.min.js"></script>
+  <script>
+    let chart;
+
+    function loadChart(every = "1m") {
+      fetch(`/api/range/?every=${every}`)
+        .then(res => res.json())
+        .then(data => {
+          const labels = data.map(r => `${r.date} ${r.time}`);
+          const temperature = data.map(r => r.temperature);
+          const humidity = data.map(r => r.humidity);
+          const pressure = data.map(r => r.pressure);
+          const co2 = data.map(r => r.co2);
+
+          const ctx = document.getElementById("timeChart").getContext("2d");
+
+          if (chart) chart.destroy();
+
+          chart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: labels.reverse(),
+              datasets: [
+                { label: "Temperature (°C)", data: temperature.reverse(), borderColor: "red", fill: false },
+                { label: "Humidity (%)", data: humidity.reverse(), borderColor: "blue", fill: false },
+                { label: "Pressure (hPa)", data: pressure.reverse(), borderColor: "green", fill: false },
+                { label: "CO₂ (ppm)", data: co2.reverse(), borderColor: "purple", fill: false }
+              ]
+            },
+            options: {
+              responsive: true,
+              interaction: { mode: "index", intersect: false },
+              stacked: false,
+              scales: {
+                y: { title: { display: true, text: "Sensor Values" } },
+                x: { title: { display: true, text: "Time" } }
+              }
+            }
+          });
+        });
+    }
+
+    loadChart();
+    document.getElementById("every").addEventListener("change", function () {
+      loadChart(this.value);
+    });
+  </script>
+</body>
+</html>

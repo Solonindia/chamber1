@@ -1,0 +1,319 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Chamber 1 — Sensor Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+<style>
+  :root{
+    --ink:#12122d; --muted:#475569; --stroke:#e5e7eb; --card:#ffffff; --radius:12px;
+    --temp:#d97706; --temp-bg:#fff7ed; --hum:#0ea5a4; --hum-bg:#f0fdfa;
+    --pres:#4338ca; --pres-bg:#eef2ff; --co2:#047857; --co2-bg:#ecfdf5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif; color:var(--ink);
+       background:linear-gradient(120deg,#a1c4fd 0%,#c2e9fb 100%);}
+
+  .navbar{position:sticky; top:0; z-index:10; height:64px; background:#fff; border-bottom:1px solid var(--stroke);
+          display:flex; align-items:center; justify-content:space-between; padding:0 16px;}
+  .logo{height:40px}
+  .nav-link{color:var(--ink); text-decoration:none; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 8px; border-radius:8px;}
+  .nav-link:hover{background:#f1f5f9}
+
+  .wrap{max-width:1080px; margin:24px auto; padding:0 16px}
+  .page-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;  /* center lo pettaali */
+  gap: 16px;
+  margin-bottom: 12px;
+  position: relative; /* controls ni right lo pettaadaniki */
+}
+  .page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  flex: none; /* spread kakunda fix avvali */
+}
+  .controls-inline {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%); /* heading pakka, right side lo fix avvali */
+  margin-left:10%;
+}
+  .controls-inline label{font-size:12px; color:var(--muted); font-weight:600}
+
+  select{padding:8px 10px; border:1px solid var(--stroke); border-radius:8px; background:#fff; font-size:14px; outline:none;}
+  select:focus{border-color:#cbd5e1; box-shadow:0 0 0 2px #e2e8f0;}
+  .btn{appearance:none; border:1px solid var(--stroke); background:#f1f5f9; color:#12122d; height:40px; padding:0 14px;
+       border-radius:8px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;}
+  .btn i{margin-right:6px} .btn:hover{background:var(--ink); color:#fff}
+
+  /* Modal */
+  .download-panel{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(2,6,23,.45); z-index:20; padding:16px;}
+  .download-panel.open{display:flex;}
+  .panel-card{background:var(--card); border:1px solid var(--stroke); border-radius:16px; min-width:520px; max-width:720px; width:100%;
+              box-shadow:0 20px 40px rgba(2,6,23,.25); padding:16px;}
+  .panel-head{display:flex; align-items:center; justify-content:space-between;  position: relative;
+  margin-bottom: 12px;}
+  .panel-title {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 16px;
+  margin: 0 auto;  /* Center horizontally */
+}
+  .icon-btn{border:none; background:transparent; font-size:22px; line-height:1; cursor:pointer; color:#334155;position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);}
+  .panel-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;}
+  .field{display:flex; flex-direction:column; gap:6px}
+  .time-row{display:flex; gap:8px;}
+  .time-row input[type="date"]{padding:8px 10px; border:1px solid var(--stroke); border-radius:8px; font-size:14px; flex:1;}
+  .time-row select{min-width:90px;}
+  .panel-actions{display:flex; justify-content:flex-end; gap:8px}
+  .wrap {
+    max-width: 100%;   /* 1080px limit remove cheyyali */
+    margin: 24px auto;
+    padding: 0 16px;
+    }
+  /* Table */
+  .card{margin-top:16px; background:#fff; border:1px solid var(--stroke); border-radius:12px; box-shadow:0 6px 18px rgba(2,6,23,.06); overflow:visible; width:1800px;       /* custom width */
+  max-width:100%;}
+  table{width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums;}
+  thead th{background:#f8fafc; border:1px solid #070707; height:56px; padding:14px 12px; font-size:15px; font-weight:700; text-align:center;}
+  thead .th-temp{background:var(--temp-bg); color:var(--temp)}
+  thead .th-hum{background:var(--hum-bg); color:var(--hum)}
+  thead .th-pres{background:var(--pres-bg); color:var(--pres)}
+  thead .th-co2{background:var(--co2-bg); color:var(--co2)}
+  tbody tr{height:42px}
+  tbody td{padding:10px 12px; border:1px solid #070707; font-size:14px; text-align:center}
+  tbody tr:nth-child(even){background:#f7fafc}
+  tbody tr:hover{background:#eef2f7}
+  tbody td.col-temp{color:var(--temp)} tbody td.col-hum{color:var(--hum)} tbody td.col-pres{color:var(--pres)} tbody td.col-co2{color:var(--co2)}
+  .panel-card {
+  background: #ffffff;
+  border: 1px solid var(--stroke);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+  animation: fadeInScale 0.25s ease-out;
+}
+
+/* Fade in animation */
+@keyframes fadeInScale {
+  from {opacity: 0; transform: scale(0.9);}
+  to {opacity: 1; transform: scale(1);}
+}
+
+/* Section labels */
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+/* Input styling */
+.time-row input[type="date"],
+.time-row select {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 14px;
+  transition: all 0.2s ease-in-out;
+}
+
+.time-row input:focus,
+.time-row select:focus {
+  border-color: var(--ink);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.25);
+  outline: none;
+}
+
+/* Button */
+.panel-actions .btn {
+  background: #12122d;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.panel-actions .btn:hover {
+  background: #f9f9fa;
+  color:#12122d;
+}
+</style>
+</head>
+<body>
+  <nav class="navbar">
+    <img src="{% static 'logo.webp' %}" alt="Logo" class="logo">
+    <a href="{% url 'chart_page' %}" class="nav-link" title="Chart"><i class="fa-solid fa-chart-line"></i><span>Chart</span></a>
+  </nav>
+
+  <div class="wrap">
+    <div class="page-header">
+      <h1 class="page-title"><i class="fa fa-microchip"></i> Chamber 1 — Sensor Data</h1>
+      <div class="controls-inline">
+       <label for="every">Show Every</label>
+        <select id="every">
+        <option value="1m" selected>1 minute</option>
+        <option value="2m">2 minutes</option>
+        <option value="5m">5 minutes</option>
+        <option value="10m">10 minutes</option>
+        <option value="20m">20 minutes</option>
+        <option value="30m">30 minutes</option>
+        <option value="45m">45 minutes</option>
+        <option value="60m">1 hour</option>
+        <option value="2h">2 hours</option>
+        <option value="3h">3 hours</option>
+        <option value="4h">4 hours</option>
+        <option value="5h">5 hours</option>
+        <option value="6h">6 hours</option>
+        <option value="7h">7 hours</option>
+        <option value="8h">8 hours</option>
+        <option value="9h">9 hours</option>
+        <option value="10h">10 hours</option>
+        <option value="11h">11 hours</option>
+        <option value="12h">12 hours</option>
+        <option value="24h">24 hours</option>
+        </select>
+        <button id="downloadBtn" class="btn"><i class="fa fa-download"></i> Download Data</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>Date</th><th>Time</th>
+            <th class="th-temp">Temperature (°C)</th>
+            <th class="th-hum">Temperature1 (°C)</th>
+            <th class="th-pres">Humidity (%)</th>
+            <th class="th-co2">Humidity1 (%)</th>
+          </tr>
+        </thead>
+        <tbody id="tb"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- MODAL -->
+  <div id="downloadPanel" class="download-panel" aria-hidden="true">
+    <div class="panel-card">
+      <div class="panel-head">
+        <h3 class="panel-title"><i class="fa fa-download"></i> Download Data</h3>
+        <button id="closePanel" class="icon-btn" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="panel-grid">
+        <div class="field">
+          <label>From</label>
+          <div class="time-row">
+            <input type="date" id="fromDate">
+            <select id="fromHour"></select>
+            <select id="fromMin"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label>To</label>
+          <div class="time-row">
+            <input type="date" id="toDate">
+            <select id="toHour"></select>
+            <select id="toMin"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-actions">
+        <button id="confirmDownload" class="btn"><i class="fa fa-file-csv"></i> Download CSV</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const tb = document.getElementById('tb');
+  const everySel = document.getElementById('every');
+  const panel = document.getElementById('downloadPanel');
+  const openBtn = document.getElementById('downloadBtn');
+  const closeBtn = document.getElementById('closePanel');
+
+  const fromDate = document.getElementById('fromDate');
+  const toDate   = document.getElementById('toDate');
+  const fromHour = document.getElementById('fromHour');
+  const toHour   = document.getElementById('toHour');
+  const fromMin  = document.getElementById('fromMin');
+  const toMin    = document.getElementById('toMin');
+
+  function fillHours(sel){
+    let html = '<option value="">Hour</option>';
+    for(let h=0; h<=23; h++){ html += `<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`; }
+    sel.innerHTML = html;
+  }
+  function fillMinutes(sel){
+    let html = '<option value="">Min</option>';
+    for(let m=0; m<60; m++){ html += `<option value="${String(m).padStart(2,'0')}">${String(m).padStart(2,'0')}</option>`; }
+    sel.innerHTML = html;
+  }
+  [fromHour,toHour].forEach(fillHours);
+  [fromMin,toMin].forEach(fillMinutes);
+
+  function handle24(selHour, selMin){
+    if (selHour.value === '23'){ selMin.value='00'; selMin.disabled=true; }
+    else selMin.disabled=false;
+  }
+  fromHour.addEventListener('change', ()=>handle24(fromHour,fromMin));
+  toHour.addEventListener('change', ()=>handle24(toHour,toMin));
+
+  function rowHtml(r){ return `<tr><td>${r.date}</td><td>${r.time}</td><td class="col-temp">${Number(r.temperature).toFixed(2)}</td><td class="col-hum">${Number(r.humidity).toFixed(2)}</td><td class="col-pres">${Number(r.pressure).toFixed(2)}</td><td class="col-co2">${Math.round(Number(r.co2))}</td></tr>`; }
+
+  async function loadData(){
+    const res = await fetch(`/api/range/?every=${encodeURIComponent(everySel.value)}`);
+    const data = await res.json();
+    tb.innerHTML = data.length ? data.map(rowHtml).join('') : `<tr><td colspan="6" style="color:#64748b; text-align:center">No rows yet.</td></tr>`;
+  }
+  everySel.addEventListener('change', loadData);
+
+  function openPanel(){ fromDate.value=''; toDate.value=''; fromHour.value=''; toHour.value=''; fromMin.value=''; toMin.value=''; [fromMin,toMin].forEach(m=>m.disabled=false); panel.classList.add('open'); }
+  function closePanel(){ panel.classList.remove('open'); }
+  openBtn.addEventListener('click', openPanel);
+  closeBtn.addEventListener('click', closePanel);
+  panel.addEventListener('click', e => { if (e.target===panel) closePanel(); });
+
+  function addOneDay(dateStr){ const [y,m,d]=dateStr.split('-').map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()+1); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`; }
+  function buildNaive(date,hour,min){ if(!date||!hour||!min) return ''; if(hour==='23'){ if(min!=='00') return 'INVALID_24'; return `${addOneDay(date)}T00:00`; } return `${date}T${hour}:${min}`; }
+  function toMillis(naive){ const [d,t]=naive.split('T'); const [Y,M,D]=d.split('-').map(Number); const [h,m]=t.split(':').map(Number); return new Date(Y,M-1,D,h,m).getTime(); }
+
+  document.getElementById('confirmDownload').addEventListener('click', async () => {
+    const start = buildNaive(fromDate.value,fromHour.value,fromMin.value);
+    const end   = buildNaive(toDate.value,toHour.value,toMin.value);
+    if(!start||!end){ alert('Please select complete From and To.'); return; }
+    if(start==='INVALID_24'||end==='INVALID_24'){ alert('23:00 must have 00 minutes.'); return; }
+    if(toMillis(start)>toMillis(end)){ alert('From must be earlier than To.'); return; }
+    try{
+      const res = await fetch(`/api/download_csv/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      if(!res.ok){ const err=await res.json().catch(()=>({})); alert(err.error||'Data unavailable'); return; }
+      const blob = await res.blob(); const url = window.URL.createObjectURL(blob);
+      const a=document.createElement('a'); a.href=url; a.download='sensor_data.csv'; document.body.appendChild(a); a.click(); a.remove();
+      closePanel();
+    }catch(e){ alert('Error downloading data.'); }
+  });
+
+  loadData();
+  setInterval(loadData,60000);
+</script>
+</body>
+</html>
