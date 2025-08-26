@@ -31,7 +31,7 @@ SECRET_KEY = 'django-insecure-y(mo+6)nw5!6e7m77h84l-^y^m*@p88gjou$7by__aw)vx(z7#
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    'solon-humidity-g9fmcrasdpcegteb.canadacentral-01.azurewebsites.net',
+    'chamber-res-amd8embbbrbgezfc.canadacentral-01.azurewebsites.net',
     '127.0.0.1',
     'localhost',
 ]
@@ -127,8 +127,8 @@ USE_I18N = True
 USE_TZ = True
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://solon-humidity-g9fmcrasdpcegteb.canadacentral-01.azurewebsites.net',
-    'http://solon-humidity-g9fmcrasdpcegteb.canadacentral-01.azurewebsites.net',
+    'https://chamber-res-amd8embbbrbgezfc.canadacentral-01.azurewebsites.net',
+    'http://chamber-res-amd8embbbrbgezfc.canadacentral-01.azurewebsites.net',
     'http://localhost',
 
 ]
