@@ -1,196 +1,126 @@
 {% load static %}
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Chamber A — Time Series Chart</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chamber {{ chamber|slice:"2:" }} — Time Series Chart</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root {
-      --ink:#12122d;
-      --muted:#475569;
-      --stroke:#e5e7eb;
-      --card:#ffffff;
-    }
-    body {
-      font-family: "Segoe UI", Roboto, Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: linear-gradient(135deg,#a1c4fd 0%,#c2e9fb 100%);
-      color: var(--ink);
-    }
+    :root { --ink:#12122d; --muted:#475569; --stroke:#e5e7eb; --card:#ffffff; }
+    body{font-family: "Segoe UI", Roboto, Arial, sans-serif; margin:0; background:linear-gradient(135deg,#7f7fd5 0%,#86a8e7 50%,#91eae4 100%); color:var(--ink);}
+    .navbar{height:64px;background:#fff;border-bottom:1px solid var(--stroke);display:flex;align-items:center;justify-content:space-between;padding:0 16px;box-shadow:0 4px 10px rgba(0,0,0,.08);}
+    .logo{height:40px}
+    .nav-right{display:flex;align-items:center;gap:12px}
+    .tabs{display:flex;gap:8px}
+    .tab{padding:6px 10px;border:1px solid var(--stroke);border-radius:8px;text-decoration:none;color:var(--ink);font-weight:600;background:#fff}
+    .tab:hover{background:#f1f5f9}
+    .tab.active{background:#0f172a;color:#fff;border-color:#0f172a}
+    .nav-link{display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--stroke);border-radius:8px;text-decoration:none;color:var(--ink);font-weight:600}
+    .nav-link:hover{background:#f1f5f9}
 
-    .navbar {
-        height: 64px;
-        background: #fff;
-        border-bottom: 1px solid var(--stroke);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 20px;
-        box-shadow: 0 4px 10px rgba(0,0,0,.08);
-        }
+    header{max-width:1200px;margin:18px auto 10px;display:flex;align-items:center;justify-content:center;position:relative;padding:0 12px}
+    header h2{margin:0;font-size:24px;font-weight:800;display:flex;align-items:center;gap:10px}
+    header .controls{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:8px}
+    header label{font-size:14px;font-weight:600;color:#444}
+    header select{padding:8px 10px;border-radius:8px;border:1px solid var(--stroke);font-size:14px;background:#fff}
 
-        .navbar .logo {
-        height: 40px;
-        }
-
-        .nav-link {
-        text-decoration: none;
-        color: var(--ink);
-        }
-
-        .nav-icon {
-        display: flex;
-        flex-direction: column; /* icon above, text below */
-        align-items: center;
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--ink);
-        }
-
-        .nav-icon i {
-        font-size: 18px;
-        margin-bottom: 4px;
-        }
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;   /* centers the heading */
-  position: relative;        /* allows absolute positioning for dropdown */
-  margin-bottom: 10px;
-}
-
-header h2 {
-  margin-top:5px;
-  font-size: 24px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  
-}
-
-header .controls {
-  position: absolute;
-  right: 10px;
-  top: 40%;
-  transform: translateY(-50%);  /* vertical centering */
-}
-
-header label {
-  font-size: 14px;
-  margin-right: 5px;
-  font-weight: 600;
-  color: #444;
-}
-
-header select {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  font-size: 14px;
-}
-
-    /* Chart */
-    canvas {
-      width: 100% !important;
-      max-width: 1100px;
-      height: 500px !important;
-      margin: auto;
-      display: block;
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 16px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.10);
-      padding: 16px;
-    }
+    .chart-wrap{max-width:1200px;margin:0 auto 24px;padding:0 12px}
+    canvas{width:100%!important;height:520px!important;background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.10);padding:12px}
   </style>
 </head>
 <body>
   <nav class="navbar">
-  <img src="{% static 'logo.webp' %}" alt="Logo" class="logo">
-
-  <a href="{% url 'sensor_data_page' %}" class="nav-link">
-    <div class="nav-icon">
-      <i class="fa-solid fa-database"></i>
-      <span>Sensor Data</span>
+    <img src="{% static 'logo.webp' %}" alt="Logo" class="logo">
+    <div class="nav-right">
+      <div class="tabs" {% if allowed|length <= 1 %}style="display:none"{% endif %}>
+        {% for ch in allowed %}
+          <a class="tab {% if chamber == ch %}active{% endif %}" href="{% url 'chart_page' ch=ch %}">
+            Chamber {{ ch|slice:"2:" }}
+          </a>
+        {% endfor %}
+      </div>
+      <a href="{% url 'sensor_data_page' ch=chamber %}" class="nav-link">
+        <i class="fa-solid fa-database"></i><span>Sensor Data</span>
+      </a>
     </div>
-  </a>
-</nav>
+  </nav>
 
-<!-- Page Header -->
-<header>
-  <h2><i class="fa-solid fa-chart-line"></i> Chamber A — Time Series Chart</h2>
-  <div class="controls">
-    <label for="every">Every</label>
-    <select id="every">
-      <option value="1m">1 minute</option>
-      <option value="2m">2 minutes</option>
-      <option value="5m">5 minutes</option>
-      <option value="10m">10 minutes</option>
-      <option value="20m">20 minutes</option>
-      <option value="30m">30 minutes</option>
-      <option value="45m">45 minutes</option>
-      <option value="60m">1 hour</option>
-      <option value="2h">2 hours</option>
-      <option value="3h">3 hours</option>
-      <option value="4h">4 hours</option>
-      <option value="5h">5 hours</option>
-      <option value="6h">6 hours</option>
-      <option value="12h">12 hours</option>
-    </select>
+  <header>
+    <h2><i class="fa-solid fa-chart-line"></i> Chamber {{ chamber|slice:"2:" }} — Time Series Chart</h2>
+    <div class="controls">
+      <label for="every">Every</label>
+      <select id="every">
+        <option value="1m" selected>1 minute</option>
+        <option value="2m">2 minutes</option>
+        <option value="5m">5 minutes</option>
+        <option value="10m">10 minutes</option>
+        <option value="20m">20 minutes</option>
+        <option value="30m">30 minutes</option>
+        <option value="45m">45 minutes</option>
+        <option value="60m">1 hour</option>
+        <option value="2h">2 hours</option>
+        <option value="3h">3 hours</option>
+        <option value="4h">4 hours</option>
+        <option value="5h">5 hours</option>
+        <option value="6h">6 hours</option>
+        <option value="12h">12 hours</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="chart-wrap">
+    <canvas id="timeChart"></canvas>
   </div>
-</header>
-  <!-- Chart -->
-  <canvas id="timeChart"></canvas>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/js/all.min.js"></script>
   <script>
+    const CH = "{{ chamber }}";            // "ch1" | "ch2" | "ch3"
     let chart;
 
-    function loadChart(every = "1m") {
-      fetch(`/api/range/?every=${every}`)
-        .then(res => res.json())
-        .then(data => {
-          const labels = data.map(r => `${r.date} ${r.time}`);
-          const temperature = data.map(r => r.temperature);
-          const humidity = data.map(r => r.humidity);
-          const pressure = data.map(r => r.pressure);
-          const co2 = data.map(r => r.co2);
+    async function loadChart(every="1m"){
+      const res = await fetch(`/api/range/${CH}/?every=${encodeURIComponent(every)}`);
+      const rows = await res.json();       // API returns newest → oldest
+      const data = rows.slice().reverse(); // make it oldest → newest for the chart
 
-          const ctx = document.getElementById("timeChart").getContext("2d");
+      const labels       = data.map(r => `${r.date} ${r.time}`);
+      const temperature  = data.map(r => r.temperature);
+      const temperature1 = data.map(r => r.temperature1);
+      const humidity     = data.map(r => r.humidity);
+      const humidity1    = data.map(r => r.humidity1);
 
-          if (chart) chart.destroy();
+      const ctx = document.getElementById("timeChart").getContext("2d");
+      if (chart) chart.destroy();
 
-          chart = new Chart(ctx, {
-            type: "line",
-            data: {
-              labels: labels.reverse(),
-              datasets: [
-                { label: "Temperature (°C)", data: temperature.reverse(), borderColor: "red", fill: false },
-                { label: "Humidity (%)", data: humidity.reverse(), borderColor: "blue", fill: false },
-                { label: "Pressure (hPa)", data: pressure.reverse(), borderColor: "green", fill: false },
-                { label: "CO₂ (ppm)", data: co2.reverse(), borderColor: "purple", fill: false }
-              ]
-            },
-            options: {
-              responsive: true,
-              interaction: { mode: "index", intersect: false },
-              stacked: false,
-              scales: {
-                y: { title: { display: true, text: "Sensor Values" } },
-                x: { title: { display: true, text: "Time" } }
-              }
-            }
-          });
-        });
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "Temperature (°C)",  data: temperature,  borderColor: "red",    fill: false, tension: .25, pointRadius: 0 },
+            { label: "Temperature1 (°C)", data: temperature1, borderColor: "orange", fill: false, tension: .25, pointRadius: 0 },
+            { label: "Humidity (%)",      data: humidity,     borderColor: "blue",   fill: false, tension: .25, pointRadius: 0 },
+            { label: "Humidity1 (%)",     data: humidity1,    borderColor: "teal",   fill: false, tension: .25, pointRadius: 0 },
+          ]
+        },
+        options: {
+          maintainAspectRatio: false,
+          responsive: true,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: { position: "top" },
+            tooltip: { callbacks: { label: (ctx)=> `${ctx.dataset.label}: ${Number(ctx.parsed.y).toFixed(2)}` } }
+          },
+          scales: {
+            x: { title: { display: true, text: "Time" }, ticks: { maxRotation: 0, autoSkip: true } },
+            y: { title: { display: true, text: "Sensor Values" }, beginAtZero: false }
+          }
+        }
+      });
     }
 
     loadChart();
-    document.getElementById("every").addEventListener("change", function () {
-      loadChart(this.value);
-    });
+    document.getElementById("every").addEventListener("change", e => loadChart(e.target.value));
   </script>
 </body>
 </html>

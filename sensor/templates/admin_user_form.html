@@ -1,0 +1,234 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% if editing_user %}Edit User{% else %}Create User{% endif %}</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  <style>
+    :root{
+      --nav-h:64px;
+      --bg-grad: linear-gradient(135deg,#7f7fd5 0%,#86a8e7 50%,#91eae4 100%);
+      --ink:#0f172a; --muted:#64748b; --stroke:#e5e7eb;
+      --brand:#2563eb; --brand-d:#1d4ed8;
+      --card:#ffffff; --shadow:0 18px 45px rgba(2,6,23,.18);
+      --radius:16px;
+    }
+
+    body{
+      margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+      color:var(--ink); background:var(--bg-grad); height:100vh; overflow:hidden;
+      display:flex; flex-direction:column;
+    }
+
+    /* NAVBAR */
+    .navbar{
+      flex:0 0 var(--nav-h);
+      background:#fff; border-bottom:1px solid var(--stroke);
+      display:flex; align-items:center; justify-content:space-between; padding:0 20px;
+      box-shadow:0 6px 18px rgba(2,6,23,.08);
+    }
+    .nav-left{display:flex; align-items:center; gap:10px}
+    .logo{height:40px}
+    .brand-title{color:#0f172a; font-weight:800; margin:0; font-size:16px}
+
+    .nav-right{display:flex; align-items:center; gap:20px}
+    .nav-btn{
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      text-decoration:none; color:#0f172a; font-weight:600; font-size:12px;
+    }
+    .nav-btn i{font-size:18px; margin-bottom:4px}
+    .nav-btn:hover{color:var(--brand)}
+
+    /* FORM WRAPPER */
+    .wrap{
+      flex:1; display:flex; align-items:center; justify-content:center;
+      padding:20px;
+    }
+    .card{
+      background:#fff; border:1px solid var(--stroke); border-radius:var(--radius);
+      box-shadow:var(--shadow); width:100%; max-width:600px;
+      padding:24px;
+    }
+    .title{margin:0 0 6px; font-size:22px; font-weight:800; text-align: center;}
+    .subtitle{margin:0 0 16px; color:var(--muted); font-size:14px}
+
+    .section{margin:0 0 18px}
+    .section h3{margin:0 0 10px; font-size:15px; text-transform:uppercase; letter-spacing:.4px; color:#111827}
+
+    .field{display:flex; flex-direction:column; gap:6px; margin-bottom:12px}
+    .label{font-weight:600; font-size:14px}
+    .help{font-size:12px; color:var(--muted)}
+
+    .control{
+      display:flex; align-items:center; gap:8px;
+      border:1px solid var(--stroke); border-radius:12px; padding:10px 12px; background:#fff;
+    }
+    .control input[type="text"],
+    .control input[type="password"]{
+      border:none; outline:none; flex:1; font-size:14px; background:transparent;
+    }
+    .eye { 
+    border:none; background:transparent; cursor:pointer; 
+    font-size:16px; color:#475569; display:none; 
+    }
+    .eye.show { display:block; }
+    .eye:hover{color:#111827}
+
+    .chips{display:flex; flex-wrap:wrap; gap:10px}
+    .chip{
+      display:flex; align-items:center; gap:8px; border:1px dashed #d7dfeb; background:#fbfdff;
+      padding:8px 12px; border-radius:10px; cursor:pointer;
+    }
+    .chip input{width:16px; height:16px}
+
+    .select-row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px}
+    .btn-mini{
+      height:32px; padding:0 12px; border-radius:8px; border:1px solid var(--stroke);
+      background:#f8fafc; cursor:pointer; font-weight:600; font-size:13px;
+    }
+    .btn-mini:hover{background:#eef2f7}
+
+    .actions{display:flex; justify-content:flex-end; gap:10px; margin-top:10px}
+    .btn{
+      appearance:none; border:1px solid var(--stroke); height:40px; padding:0 16px; border-radius:10px;
+      font-weight:700; cursor:pointer; background:#f8fafc; color:#0f172a;
+    }
+    .btn-primary{background:var(--brand); color:#fff; border-color:var(--brand)}
+    .btn-primary:hover{background:var(--brand-d)}
+    .btn-danger{background:#fff; color:#111827}
+    .req{color:#ef4444}
+
+    .alert{margin:0 0 12px; padding:10px 12px; border-radius:12px; background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-size:14px}
+    .ok{background:#ecfdf5; border-color:#a7f3d0; color:#065f46}
+  </style>
+</head>
+
+<body>
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <img src="{% static 'logo.webp' %}" class="logo" alt="Logo">
+    </div>
+    <div class="nav-right">
+      <a class="nav-btn" href="{% url 'user_list' %}">
+        <i class="fa-solid fa-users-gear"></i>
+        <span>Manage Users</span>
+      </a>
+      <a class="nav-btn" href="{% url 'login' %}">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Logout</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- FORM -->
+  <div class="wrap">
+    <div class="card">
+      <h2 class="title">
+        {% if editing_user %}Edit User Access: {{ editing_user.username }}{% else %}Create User{% endif %}
+      </h2>
+
+      <form method="post">
+        {% csrf_token %}
+        {% if messages %}
+          {% for m in messages %}
+            <div class="alert{% if m.tags == 'success' %} ok{% endif %}">{{ m }}</div>
+          {% endfor %}
+        {% endif %}
+
+        {% if not editing_user %}
+        <div class="section">
+          <div class="field">
+            <label class="label">Username <span class="req">*</span></label>
+            <div class="control">
+              <input type="text" name="username" required>
+            </div>
+            <span class="help">Unique login name</span>
+          </div>
+
+          <div class="field">
+            <label class="label">Password <span class="req">*</span></label>
+            <div class="control">
+                <input type="password" name="password" id="pwd" required>
+                <button type="button" class="eye" id="togglePwd">
+                </button>
+            </div>
+            <span class="help">Min 8 chars recommended</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="section">
+          <div class="select-row">
+            <span class="help">Tick the chambers this user can access</span>
+            <div>
+              <button type="button" class="btn-mini" id="selectAll">Select all</button>
+              <button type="button" class="btn-mini" id="clearAll">Clear</button>
+            </div>
+          </div>
+
+          <div class="chips">
+            {% for key,label in chambers %}
+              <label class="chip">
+                <input type="checkbox" name="chambers" value="{{ key }}"
+                       {% if key in assigned %}checked{% endif %}>
+                <span>{{ label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="actions">
+          <a class="btn btn-danger" href="{% url 'user_list' %}">Cancel</a>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+   // Password eye toggle with show/hide based on input value
+const toggle = document.getElementById('togglePwd');
+const pwd = document.getElementById('pwd');
+
+if (toggle && pwd){
+  // show/hide eye only if input has text
+  pwd.addEventListener('input', () => {
+    if (pwd.value.length > 0){
+      toggle.classList.add('show');
+    } else {
+      toggle.classList.remove('show');
+      pwd.type = 'password';
+      toggle.querySelector('i').classList.remove('fa-eye');
+      toggle.querySelector('i').classList.add('fa-eye-slash');
+    }
+  });
+
+  // toggle password visibility
+  toggle.addEventListener('click', () => {
+    const icon = toggle.querySelector('i');
+    if (pwd.type === 'password') {
+      pwd.type = 'text';
+      icon.classList.remove('fa-eye-slash');
+      icon.classList.add('fa-eye');
+    } else {
+      pwd.type = 'password';
+      icon.classList.remove('fa-eye');
+      icon.classList.add('fa-eye-slash');
+    }
+  });
+}
+
+
+    // Select/Clear all
+    const selectAll = document.getElementById('selectAll');
+    const clearAll = document.getElementById('clearAll');
+    const checks = () => Array.from(document.querySelectorAll('input[type="checkbox"][name="chambers"]'));
+    if (selectAll) selectAll.addEventListener('click', () => checks().forEach(c => c.checked = true));
+    if (clearAll) clearAll.addEventListener('click', () => checks().forEach(c => c.checked = false));
+  </script>
+</body>
+</html>
