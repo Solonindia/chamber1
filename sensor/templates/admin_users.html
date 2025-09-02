@@ -1,0 +1,232 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Manage Users</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  <style>
+    :root{ --nav-h:64px; --stroke:#e5e7eb; --brand:#2563eb; --brand-d:#1d4ed8; }
+
+    /* Page background + layout */
+    body{
+      margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+      background:linear-gradient(135deg,#7f7fd5 0%,#86a8e7 50%,#91eae4 100%);
+      color:#0f172a; min-height:100vh;
+      padding-top:var(--nav-h); /* space for navbar */
+      padding-left:40px; padding-right:40px; padding-bottom:40px;
+      background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+    }
+    h2{ font-size:26px; font-weight:800; text-align:center;margin-top: 20px;}
+
+    /* NAVBAR (white, sticky) */
+    .navbar{
+      position:fixed; top:0; left:0; right:0; height:var(--nav-h); z-index:20;
+      background:#fff; border-bottom:1px solid var(--stroke);
+      display:flex; align-items:center; justify-content:space-between; padding:0 16px;
+      box-shadow:0 6px 18px rgba(2,6,23,.08);
+    }
+    .nav-left{display:flex; align-items:center; gap:10px}
+    .logo{height:40px}
+    .brand-title{font-size:16px; font-weight:800; color:#0f172a; margin:0}
+    .nav-right{display:flex; align-items:center; gap:14px}
+    .nav-btn{
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      text-decoration:none; color:#0f172a; font-weight:600; font-size:12px;
+    }
+    .nav-btn i{font-size:18px; margin-bottom:4px}
+    .nav-btn:hover{color:var(--brand)}
+
+    .container{max-width:1100px; margin:0 auto;}
+
+    .top-bar{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:20px;
+    }
+    .btn-add{
+      display:inline-flex; align-items:center; gap:8px;
+      background:var(--brand); color:#fff; font-weight:600;
+      padding:10px 16px; border-radius:10px; text-decoration:none;
+      transition:all .15s ease;
+    }
+    .btn-add:hover{background:var(--brand-d)}
+
+    .card{
+      background:#fff; border-radius:16px; box-shadow:0 12px 30px rgba(0,0,0,.15);
+      overflow:hidden; border:1px solid #e5e7eb;
+    }
+    table{width:100%; border-collapse:collapse; font-size:15px}
+    thead{background:#f9fafb}
+    thead th{
+      text-align:left; padding:14px 16px; font-weight:700; border-bottom:2px solid #e5e7eb;
+    }
+    tbody td{
+      padding:14px 16px; border-bottom:1px solid #e5e7eb; vertical-align:middle;
+    }
+    tbody tr:nth-child(even){background:#f9fafc}
+    tbody tr:hover{background:#f1f5f9}
+
+    .actions{display:flex; gap:10px}
+    .btn{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 12px; border-radius:8px; font-size:14px;
+      font-weight:600; text-decoration:none; border:1px solid transparent;
+      transition:all .15s ease; cursor:pointer;
+    }
+    .btn-edit{background:#f8fafc; color:#2563eb; border-color:#cbd5e1}
+    .btn-edit:hover{background:#2563eb; color:#fff}
+    .btn-del{background:#fef2f2; color:#dc2626; border-color:#fecaca}
+    .btn-del:hover{background:#dc2626; color:#fff}
+
+    /* Modal (alert-style) */
+    .modal-backdrop{
+      position:fixed; inset:0; background:rgba(2,6,23,.55);
+      display:none; align-items:center; justify-content:center; padding:16px; z-index:50;
+    }
+    .modal-backdrop.open{display:flex}
+    .modal{
+      width:min(96vw,520px); background:#fff; border:1px solid #e5e7eb; border-radius:16px;
+      box-shadow:0 20px 50px rgba(0,0,0,.35); overflow:hidden;
+    }
+    .modal-head{
+      display:flex; align-items:center; gap:10px; padding:16px 18px; background:#fff7ed; border-bottom:1px solid #fde68a;
+    }
+    .modal-head i{color:#ea580c}
+    .modal-title{margin:0; font-size:18px; font-weight:800}
+    .modal-body{padding:16px 18px; color:#374151; line-height:1.5}
+    .modal-actions{
+      display:flex; gap:10px; justify-content:flex-end; padding:12px 18px; background:#f9fafb; border-top:1px solid #e5e7eb;
+    }
+    .btn-danger-solid{
+      background:#dc2626; color:#fff; border:1px solid #dc2626; border-radius:10px; height:40px; padding:0 14px; font-weight:700;
+    }
+    .btn-danger-solid:hover{background:#b91c1c; border-color:#b91c1c}
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="nav-left">
+      <img src="{% static 'logo.webp' %}" class="logo" alt="Logo">
+    </div>
+    <div class="nav-right">
+      <a class="nav-btn" href="{% url 'sensor_data_page' ch='ch1' %}">
+        <i class="fa-solid fa-database"></i><span>Data</span>
+      </a>
+      <a class="nav-btn" href="{% url 'login' %}">
+        <i class="fa-solid fa-right-from-bracket"></i><span>Logout</span>
+      </a>
+    </div>
+  </nav>
+
+  <h2>Manage Users</h2>
+  <div class="container">
+
+
+    <div class="top-bar">
+      <div></div>
+      <a href="{% url 'user_create' %}" class="btn-add">
+        <i class="fa-solid fa-user-plus"></i> Add User
+      </a>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Chambers</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.username }}</td>
+            <td>
+              {% for c in u.chamberaccess_set.all %}
+                {{ c.get_chamber_display }}{% if not forloop.last %}, {% endif %}
+              {% empty %} None
+              {% endfor %}
+            </td>
+            <td>
+              <div class="actions">
+                <a href="{% url 'user_edit' u.id %}" class="btn btn-edit">
+                  <i class="fa-solid fa-pen"></i> Edit
+                </a>
+                <!-- Delete triggers modal instead of navigating -->
+                <a href="#" class="btn btn-del"
+                   data-url="{% url 'user_delete' u.id %}"
+                   data-user="{{ u.username }}">
+                  <i class="fa-solid fa-trash"></i> Delete
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmModal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="del-title">
+      <div class="modal-head">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <h3 id="del-title" class="modal-title">Confirm Delete</h3>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to delete user <strong id="delUser"></strong>?</p>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="cancelBtn" class="btn-ghost">Cancel</button>
+        <form id="deleteForm" method="post" action="">
+          {% csrf_token %}
+          <button type="submit" class="btn-danger-solid">
+            <i class="fa-solid fa-trash"></i> Yes, delete
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Elements
+    const modal = document.getElementById('confirmModal');
+    const delUserText = document.getElementById('delUser');
+    const deleteForm = document.getElementById('deleteForm');
+    const cancelBtn = document.getElementById('cancelBtn');
+
+    // Open modal on any Delete click
+    document.addEventListener('click', (e) => {
+      const a = e.target.closest('.btn-del');
+      if (!a) return;
+      e.preventDefault();
+
+      const url = a.getAttribute('data-url');
+      const user = a.getAttribute('data-user');
+
+      delUserText.textContent = user;
+      deleteForm.setAttribute('action', url);
+
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+    });
+
+    // Close modal
+    function closeModal(){
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    cancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e)=>{ if(e.target === modal) closeModal(); });
+    document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape' && modal.classList.contains('open')) closeModal(); });
+  </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Chambers{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#f1f5f9}
+    .topbar{display:flex;justify-content:space-between;align-items:center;background:#0f172a;color:#fff;padding:10px 14px}
+    .topbar a{color:#fff;text-decoration:none;font-weight:600}
+    .shell{max-width:1100px;margin:16px auto;padding:0 16px}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="topbar">
+    <div><i class="fa-solid fa-microchip"></i> Chambers</div>
+    <div>
+      {% if user.is_authenticated %}
+        <span style="opacity:.8;margin-right:10px">Hi, {{ user.username }}</span>
+        <a href="{% url 'logout' %}">Logout</a>
+      {% else %}
+        <a href="{% url 'login' %}">Login</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="shell">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

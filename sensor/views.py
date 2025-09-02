@@ -1,176 +1,474 @@
-import re, random
-from datetime import timedelta
-from django.http import JsonResponse
-from django.shortcuts import render
+import re, csv, json
+from datetime import timedelta, datetime
+
+from django.http import JsonResponse, HttpResponse
+from django.shortcuts import render, redirect
 from django.utils import timezone
-from .models import MinuteReading
+from django.utils.timezone import make_aware, is_naive
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
+
+from .models import Chamber1Data, Chamber2Data, Chamber3Data, ChamberAccess
+
+# ---------------- Chamber mapping ----------------
+
+# views_admin.py
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.models import User
+from django.shortcuts import render, redirect, get_object_or_404
+from .models import ChamberAccess
+
+MODEL_BY_CH = {
+    "ch1": Chamber1Data,
+    "ch2": Chamber2Data,
+    "ch3": Chamber3Data,
+}
+
+# ---------------- Access check ----------------
+def _user_has_access(user, ch):
+    if user.is_superuser:
+        return True
+    return ChamberAccess.objects.filter(user=user, chamber=ch).exists()
+
+# ---------------- Helpers ----------------
+def _parse_span(s: str) -> timedelta:
+    s = (s or "1m").strip().lower()
+    m = re.fullmatch(r"(\d+)\s*([mh])", s)
+    if not m:
+        return timedelta(minutes=1)
+    qty, unit = int(m.group(1)), m.group(2)
+    return timedelta(hours=max(1, min(12, qty))) if unit == "h" else timedelta(minutes=max(1, min(720, qty)))
+
+from django.utils.timezone import make_aware, is_naive
 from datetime import datetime
 
+def _floor_minute(dt):
+    return dt.replace(second=0, microsecond=0)
 
-RANGES = {
-    "temperature": (18.0, 30.0),
-    "humidity":    (35.0, 70.0),
-    "pressure":    (990.0, 1020.0),
-    "co2":         (420.0, 1200.0),
-}
-def _rand(lo, hi, nd=2): return round(random.uniform(lo, hi), nd)
+def _select_rows_by_step(qs, start_dt, end_dt, step):
+    """
+    qs: queryset ordered by created_at ASC (from a single chamber's table)
+    step: timedelta (1m, 5m, 30m ...)
 
-def _parse_span(s: str) -> timedelta:
-    s = (s or '1m').strip().lower()
-    m = re.fullmatch(r'(\d+)\s*([mh])', s)
-    if not m: return timedelta(minutes=1)
-    qty, unit = int(m.group(1)), m.group(2)
-    if unit == 'h': return timedelta(hours=max(1, min(12, qty)))
-    return timedelta(minutes=max(1, min(720, qty)))
+    - If multiple rows exist within the same minute, pick the **last** one.
+    - Walk at 'step' cadence starting from start minute.
+    """
+    tz = timezone.get_current_timezone()
 
-def _ensure_current_minute_reading(chamber="Chamber A"):
-    now = timezone.localtime()
-    slot = now.replace(second=0, microsecond=0)
-    d, t = slot.date(), slot.time()
-    obj, _ = MinuteReading.objects.get_or_create(
-        chamber=chamber, date=d, time=t,
-        defaults={
-            "temperature": _rand(*RANGES["temperature"]),
-            "humidity":    _rand(*RANGES["humidity"]),
-            "pressure":    _rand(*RANGES["pressure"]),
-            "co2":         _rand(*RANGES["co2"], nd=0),
-        }
-    )
-    return obj
+    # Build "latest per minute" map
+    per_minute = {}
+    for r in qs.order_by("created_at"):
+        loc = timezone.localtime(r.created_at, tz)
+        # round DOWN to minute
+        slot = loc.replace(second=0, microsecond=0)
+        if slot not in per_minute:
+            per_minute[slot] = r   # keep first row of that minute
 
-def minute_table(request):
-    return render(request, "dashboard.html")
+    # Walk aligned to start
+    selected = []
+    slot = _floor_minute(timezone.localtime(start_dt, tz))
+    end_local = timezone.localtime(end_dt, tz)
+    while slot <= end_local:
+        if slot in per_minute:
+            selected.append(per_minute[slot])
+        slot += step
+    return selected
 
-def range_rows(request):
-    every = request.GET.get('every', '1m')
+# ---------------- Page routes ----------------
+def redirect_to_ch1(request):
+    return redirect("sensor_data_page", ch="ch1")
+
+@login_required
+def chambers_home(request):
+    if request.user.is_superuser:
+        allowed = ["ch1", "ch2", "ch3"]
+    else:
+        allowed = list(
+            ChamberAccess.objects.filter(user=request.user).values_list("chamber", flat=True)
+        )
+    return render(request, "chambers_home.html", {"allowed": allowed})
+
+@login_required
+def minute_table(request, ch):
+    if ch not in MODEL_BY_CH or not _user_has_access(request.user, ch):
+        return JsonResponse({"error": "Access denied"}, status=403)
+
+    # build allowed list for the navbar
+    if request.user.is_superuser:
+        allowed = ["ch1", "ch2", "ch3"]
+    else:
+        allowed = list(
+            ChamberAccess.objects.filter(user=request.user).values_list("chamber", flat=True)
+        )
+
+    return render(request, "dashboard.html", {"chamber": ch, "allowed": allowed})
+
+
+@login_required
+def chart_page(request, ch):
+    if ch not in MODEL_BY_CH or not _user_has_access(request.user, ch):
+        return JsonResponse({"error": "Access denied"}, status=403)
+
+    if request.user.is_superuser:
+        allowed = ["ch1", "ch2", "ch3"]
+    else:
+        allowed = list(
+            ChamberAccess.objects.filter(user=request.user).values_list("chamber", flat=True)
+        )
+
+    return render(request, "chart.html", {"chamber": ch, "allowed": allowed})
+
+
+# ---------------- Table API ----------------
+@login_required
+def range_rows(request, ch):
+    if ch not in MODEL_BY_CH or not _user_has_access(request.user, ch):
+        return JsonResponse([], safe=False)
+
+    Model = MODEL_BY_CH[ch]
+    every = request.GET.get("every", "1m")
     step = _parse_span(every)
-    minutes = int(step.total_seconds() // 60)  # step size
 
-    # make sure current row exists
-    _ensure_current_minute_reading()
-
-    # fetch all rows oldest → newest
-    qs = MinuteReading.objects.filter(chamber="Chamber A").order_by('date', 'time')
-
-    kept = []
-    seen_slots = set()
-
+    qs = Model.objects.order_by("date", "time")  # oldest → newest
     if not qs.exists():
         return JsonResponse([], safe=False)
 
-    # take the first record as the starting point
-    first_row = qs.first()
-    slot_dt = timezone.make_aware(
-        timezone.datetime.combine(first_row.date, first_row.time)
-    )
+    readings = {(r.date, r.time.replace(second=0, microsecond=0)): r for r in qs}
+    first_row, last_row = qs.first(), qs.last()
 
-    # build a dict for quick lookup
-    readings = {(r.date, r.time): r for r in qs}
+    slot_dt = timezone.make_aware(datetime.combine(first_row.date, first_row.time.replace(second=0, microsecond=0)))
+    last_dt = timezone.make_aware(datetime.combine(last_row.date, last_row.time.replace(second=0, microsecond=0)))
 
-    # step forward until the latest record
-    last_row = qs.last()
-    last_dt = timezone.make_aware(
-        timezone.datetime.combine(last_row.date, last_row.time)
-    )
-
+    kept, prev = [], None
     while slot_dt <= last_dt:
-        sig = (slot_dt.date(), slot_dt.time())
-        if sig in readings and sig not in seen_slots:
-            r = readings[sig]
-            kept.append({
+        key = (slot_dt.date(), slot_dt.time())
+        if key in readings:
+            r = readings[key]
+            row = {
                 "date": r.date.isoformat(),
                 "time": r.time.strftime("%H:%M"),
                 "temperature": r.temperature,
+                "temperature1": r.temperature1,
                 "humidity": r.humidity,
-                "pressure": r.pressure,
-                "co2": r.co2,
-            })
-            seen_slots.add(sig)
+                "humidity1": r.humidity1,
+            }
+            prev = row
+        else:
+            row = {
+                "date": slot_dt.date().isoformat(),
+                "time": slot_dt.time().strftime("%H:%M"),
+                "temperature": prev["temperature"] if prev else None,
+                "temperature1": prev["temperature1"] if prev else None,
+                "humidity": prev["humidity"] if prev else None,
+                "humidity1": prev["humidity1"] if prev else None,
+            }
+        kept.append(row)
         slot_dt += step
-
-    # 🔽 reverse list before returning → newest at top
-    kept.reverse()
-
     return JsonResponse(kept, safe=False)
 
-from django.http import JsonResponse, HttpResponse
-from django.utils.timezone import make_aware, is_naive
-from datetime import datetime
-import csv
+# ---------------- Chart data API ----------------
+@login_required
+@csrf_exempt
+def chart_data(request, ch):
+    if ch not in MODEL_BY_CH or not _user_has_access(request.user, ch):
+        return JsonResponse({"labels": [], "temperature": [], "temperature1": [], "humidity": [], "humidity1": []}, status=403)
 
-def parse_local(dt_str):
-    """Accepts YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS"""
+    Model = MODEL_BY_CH[ch]
+    qs = Model.objects.order_by("created_at")  # oldest → newest
+    data = {
+        "labels": [f"{r.date} {r.time.strftime('%H:%M')}" for r in qs],
+        "temperature": [r.temperature for r in qs],
+        "temperature1": [r.temperature1 for r in qs],
+        "humidity": [r.humidity for r in qs],
+        "humidity1": [r.humidity1 for r in qs],
+    }
+    return JsonResponse(data)
+
+# ---------------- Ingest (device POST) ----------------
+from json import JSONDecodeError
+
+@csrf_exempt
+def ingest_sensor_data(request, ch):
+    """Device endpoint (NO login required)."""
+    if ch not in MODEL_BY_CH:
+        return JsonResponse({"error": "Invalid chamber"}, status=400)
+    Model = MODEL_BY_CH[ch]
+
+    if request.method == "GET":
+        last = Model.objects.order_by("-created_at").first()
+        return JsonResponse({
+            "ok": True,
+            "chamber": ch,
+            "expect_json_fields": ["temperature", "temperature1", "humidity", "humidity1"],
+            "hint": "POST JSON to this URL with Content-Type: application/json",
+            "last": None if not last else {
+                "id": last.id,
+                "date": last.date.isoformat(),
+                "time": last.time.strftime("%H:%M:%S"),
+                "temperature": last.temperature,
+                "temperature1": last.temperature1,
+                "humidity": last.humidity,
+                "humidity1": last.humidity1,
+                "created_at": timezone.localtime(last.created_at).isoformat(timespec="seconds"),
+            },
+        })
+
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+
+    ctype = (request.META.get("CONTENT_TYPE") or "").split(";")[0].strip().lower()
+    if ctype != "application/json":
+        return JsonResponse({"error": "Content-Type must be application/json"}, status=400)
+
     try:
-        # Try with seconds
-        dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S")
-    except ValueError:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (UnicodeDecodeError, JSONDecodeError):
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    required = ["temperature", "temperature1", "humidity", "humidity1"]
+    missing = [f for f in required if f not in payload]
+    if missing:
+        return JsonResponse({"error": f"Missing fields: {', '.join(missing)}"}, status=400)
+
+    row = Model.objects.create(
+        temperature=float(payload["temperature"]),
+        temperature1=float(payload["temperature1"]),
+        humidity=float(payload["humidity"]),
+        humidity1=float(payload["humidity1"]),
+    )
+
+    return JsonResponse({
+        "status": "ok",
+        "chamber": ch,
+        "id": row.id,
+        "date": row.date.isoformat(),
+        "time": row.time.strftime("%H:%M:%S"),
+        "created_at": timezone.localtime(row.created_at).isoformat(timespec="seconds"),
+    }, status=201)
+
+import csv
+from datetime import datetime, timedelta
+from django.http import JsonResponse, HttpResponse
+from django.contrib.auth.decorators import login_required
+from django.db.models import Q
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+
+# ======= DEBUG SWITCH =======
+DEBUG_DL = True
+def dbg(*args, **kwargs):
+    if DEBUG_DL:
+        print("[DLDEBUG]", *args, **kwargs)
+
+# ---------- Parse span helper ----------
+def _parse_span(every: str) -> timedelta:
+    if not every:
+        return timedelta(minutes=1)
+    every = every.strip().lower()
+    if every.endswith("m"):
+        val = int(every[:-1] or 1)
+        step = timedelta(minutes=val)
+    elif every.endswith("h"):
+        val = int(every[:-1] or 1)
+        step = timedelta(hours=val)
+    else:
+        step = timedelta(minutes=1)
+    dbg("step parsed from 'every':", every, "=>", step)
+    return step
+
+# ---------- Parse frontend datetime ----------
+def parse_local(dt_str: str):
+    """
+    Parse frontend datetime string into naive datetime (IST already).
+    DO NOT shift here; DB date+time are also local/naive.
+    """
+    dbg("parse_local IN:", dt_str)
+    if not dt_str:
+        return None
+    out = None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"):
         try:
-            # Fallback without seconds
-            dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
+            out = datetime.strptime(dt_str.strip(), fmt)
+            break
         except ValueError:
-            return None
+            continue
+    dbg("parse_local OUT:", out)
+    return out
 
-    # Make timezone-aware if needed
-    if is_naive(dt):
-        dt = make_aware(dt)
-    return dt
+# ---------- Query helper ----------
+from django.utils import timezone
+import pytz
 
-def download_csv(request):
-    start = request.GET.get("start")
-    end   = request.GET.get("end")
+IST = pytz.timezone("Asia/Kolkata")
 
-    if not start or not end:
-        return JsonResponse({"error": "Start and End datetime required"}, status=400)
+def _query_range(Model, start_dt, end_dt):
+    """
+    Query using created_at (stored in UTC).
+    Convert frontend IST datetimes → UTC aware.
+    """
+    # Mark frontend inputs as IST
+    if timezone.is_naive(start_dt):
+        start_dt = IST.localize(start_dt)
+    if timezone.is_naive(end_dt):
+        end_dt = IST.localize(end_dt)
 
-    start_dt = parse_local(start)
-    end_dt   = parse_local(end)
+    # Convert IST → UTC
+    start_dt = start_dt.astimezone(pytz.UTC)
+    end_dt = end_dt.astimezone(pytz.UTC)
 
-    if not start_dt or not end_dt:
-        return JsonResponse({"error": "Data for the specified period is unavailable"}, status=400)
-
-    # Expand end to include the full minute
-    end_dt = end_dt.replace(second=59, microsecond=999999)
-
-    # Query data
-    rows = MinuteReading.objects.filter(
-        chamber="Chamber A",
+    return Model.objects.filter(
         created_at__gte=start_dt,
         created_at__lte=end_dt
     ).order_by("created_at")
 
-    if not rows.exists():
-        return JsonResponse({"error": "No data available for that period"}, status=404)
 
-    # Generate CSV
-    response = HttpResponse(content_type="text/csv")
-    response['Content-Disposition'] = (
-        f'attachment; filename="Chamber1_{start_dt.date()}_{end_dt.date()}.csv"'
+# ---------- First-row-per-minute ----------
+import pytz
+from django.utils import timezone
+
+IST = pytz.timezone("Asia/Kolkata")
+
+def _select_rows_by_step_first(qs, start_dt, end_dt, step):
+    """
+    Group by IST minute based on created_at.
+    Take the first row in each minute.
+    """
+    per_minute = {}
+    for r in qs:
+        # convert created_at → IST
+        ist_time = timezone.localtime(r.created_at, IST)
+        slot = ist_time.replace(second=0, microsecond=0)
+        if slot not in per_minute:
+            per_minute[slot] = {
+                "date": ist_time.date().isoformat(),
+                "time": ist_time.strftime("%H:%M"),
+                "temperature": r.temperature,
+                "temperature1": r.temperature1,
+                "humidity": r.humidity,
+                "humidity1": r.humidity1,
+            }
+
+    rows = []
+    slot = start_dt.replace(second=0, microsecond=0)
+    while slot <= end_dt:
+        row = per_minute.get(slot, {
+            "date": slot.date().isoformat(),
+            "time": slot.strftime("%H:%M"),
+            "temperature": None, "temperature1": None,
+            "humidity": None, "humidity1": None,
+        })
+        rows.append(row.copy())
+        slot += step
+    return rows
+
+
+# ---------- CSV Export ----------
+@login_required
+def download_csv(request, ch):
+    if ch not in MODEL_BY_CH or not _user_has_access(request.user, ch):
+        return JsonResponse({"error": "Access denied"}, status=403)
+
+    Model = MODEL_BY_CH[ch]
+    dbg("CSV REQUEST chamber:", ch, "GET:", request.GET.dict())
+
+    start, end, every = request.GET.get("start"), request.GET.get("end"), request.GET.get("every", "1m")
+    if not start or not end:
+        return JsonResponse({"error": "Start and End datetime required"}, status=400)
+
+    start_dt, end_dt = parse_local(start), parse_local(end)
+    if not start_dt or not end_dt:
+        return JsonResponse({"error": "Invalid datetime format"}, status=400)
+
+    # include whole last minute
+    end_dt = end_dt.replace(second=59, microsecond=999999)
+    step = _parse_span(every)
+    dbg("CSV window:", start_dt, "→", end_dt, "| step:", step)
+
+    qs = _query_range(Model, start_dt, end_dt)
+    if not qs.exists():
+        dbg("CSV: NO DATA in this window")
+        return JsonResponse({"error": "No data available"}, status=404)
+
+    rows = _select_rows_by_step_first(qs, start_dt, end_dt, step)
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f'attachment; filename="Chamber_{ch}_{start_dt.date()}_{end_dt.date()}_{every}.csv"'
     )
+    response.write("\ufeff")  # BOM for Excel
 
     writer = csv.writer(response)
-    writer.writerow(["Date", "Time", "Temperature (°C)", "Humidity (%)", "Pressure (hPa)", "CO2 (ppm)"])
-
+    writer.writerow(["Date", "Time", "Temperature (°C)", "Temperature1 (°C)", "Humidity (%)", "Humidity1 (%)"])
     for r in rows:
-        writer.writerow([r.date, r.time, r.temperature, r.humidity, r.pressure, r.co2])
-
+        writer.writerow([
+            r["date"], r["time"],
+            "" if r["temperature"]  is None else f'{r["temperature"]:.2f}',
+            "" if r["temperature1"] is None else f'{r["temperature1"]:.2f}',
+            "" if r["humidity"]     is None else f'{r["humidity"]:.2f}',
+            "" if r["humidity1"]    is None else f'{r["humidity1"]:.2f}',
+        ])
+    dbg("CSV: wrote", len(rows), "rows")
     return response
 
+# ---------- PDF Export ----------
+@login_required
+def download_pdf(request, ch):
+    if ch not in MODEL_BY_CH or not _user_has_access(request.user, ch):
+        return JsonResponse({"error": "Access denied"}, status=403)
 
-from django.views.decorators.csrf import csrf_exempt
+    Model = MODEL_BY_CH[ch]
+    dbg("PDF REQUEST chamber:", ch, "GET:", request.GET.dict())
 
-def chart_page(request):
-    return render(request, "chart.html")
+    start, end, every = request.GET.get("start"), request.GET.get("end"), request.GET.get("every", "1m")
+    if not start or not end:
+        return JsonResponse({"error": "Start and End datetime required"}, status=400)
 
-@csrf_exempt
-def chart_data(request):
-    # fetch last N records (say 200) sorted oldest → newest
-    qs = MinuteReading.objects.filter(chamber="Chamber A").order_by("created_at")[:200]
+    start_dt, end_dt = parse_local(start), parse_local(end)
+    if not start_dt or not end_dt:
+        return JsonResponse({"error": "Invalid datetime format"}, status=400)
 
-    data = {
-        "labels": [f"{r.date} {r.time.strftime('%H:%M')}" for r in qs],
-        "temperature": [r.temperature for r in qs],
-        "humidity": [r.humidity for r in qs],
-        "pressure": [r.pressure for r in qs],
-        "co2": [r.co2 for r in qs],
-    }
-    return JsonResponse(data)
+    end_dt = end_dt.replace(second=59, microsecond=999999)
+    step = _parse_span(every)
+    dbg("PDF window:", start_dt, "→", end_dt, "| step:", step)
+
+    qs = _query_range(Model, start_dt, end_dt)
+    if not qs.exists():
+        dbg("PDF: NO DATA in this window")
+        return JsonResponse({"error": "No data available"}, status=404)
+
+    rows = _select_rows_by_step_first(qs, start_dt, end_dt, step)
+
+    response = HttpResponse(content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="Chamber_{ch}_{start_dt.date()}_{end_dt.date()}_{every}.pdf"'
+
+    doc = SimpleDocTemplate(response, pagesize=landscape(A4),
+                            rightMargin=18, leftMargin=18, topMargin=24, bottomMargin=18)
+    styles = getSampleStyleSheet()
+    title = Paragraph(f"Chamber {ch.upper()} — Sensor Data (every {every})", styles["Heading3"])
+
+    data = [["Date", "Time", "Temperature (°C)", "Temperature1 (°C)", "Humidity (%)", "Humidity1 (%)"]]
+    for r in rows:
+        data.append([
+            r["date"], r["time"],
+            "" if r["temperature"]  is None else f'{r["temperature"]:.2f}',
+            "" if r["temperature1"] is None else f'{r["temperature1"]:.2f}',
+            "" if r["humidity"]     is None else f'{r["humidity"]:.2f}',
+            "" if r["humidity1"]    is None else f'{r["humidity1"]:.2f}',
+        ])
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#f1f5f9")),
+        ("TEXTCOLOR",  (0,0), (-1,0), colors.HexColor("#111827")),
+        ("FONTNAME",   (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTSIZE",   (0,0), (-1,0), 10),
+        ("FONTSIZE",   (0,1), (-1,-1), 9),
+        ("ALIGN",      (0,0), (-1,-1), "CENTER"),
+        ("GRID",       (0,0), (-1,-1), 0.5, colors.HexColor("#111111")),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f7fafc")]),
+    ]))
+    doc.build([title, Spacer(1, 8), table])
+    dbg("PDF: wrote", len(rows), "rows")
+    return response
