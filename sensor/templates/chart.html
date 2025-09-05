@@ -85,9 +85,9 @@
 
       const labels       = data.map(r => `${r.date} ${r.time}`);
       const temperature  = data.map(r => r.temperature);
-      const temperature1 = data.map(r => r.temperature1);
+      const pressure = data.map(r => r.pressure);
       const humidity     = data.map(r => r.humidity);
-      const humidity1    = data.map(r => r.humidity1);
+      const co2    = data.map(r => r.co2);
 
       const ctx = document.getElementById("timeChart").getContext("2d");
       if (chart) chart.destroy();
@@ -98,9 +98,9 @@
           labels,
           datasets: [
             { label: "Temperature (°C)",  data: temperature,  borderColor: "red",    fill: false, tension: .25, pointRadius: 0 },
-            { label: "Temperature1 (°C)", data: temperature1, borderColor: "orange", fill: false, tension: .25, pointRadius: 0 },
+            { label: "pressure (°C)", data: pressure, borderColor: "orange", fill: false, tension: .25, pointRadius: 0 },
             { label: "Humidity (%)",      data: humidity,     borderColor: "blue",   fill: false, tension: .25, pointRadius: 0 },
-            { label: "Humidity1 (%)",     data: humidity1,    borderColor: "teal",   fill: false, tension: .25, pointRadius: 0 },
+            { label: "co2 (%)",     data: co2,    borderColor: "teal",   fill: false, tension: .25, pointRadius: 0 },
           ]
         },
         options: {
