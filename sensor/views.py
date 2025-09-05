@@ -148,9 +148,9 @@ def range_rows(request, ch):
                 "date": r.date.isoformat(),
                 "time": r.time.strftime("%H:%M"),
                 "temperature": r.temperature,
-                "temperature1": r.temperature1,
+                "pressure": r.pressure,
                 "humidity": r.humidity,
-                "humidity1": r.humidity1,
+                "co2": r.co2,
             }
             prev = row
         else:
@@ -158,9 +158,9 @@ def range_rows(request, ch):
                 "date": slot_dt.date().isoformat(),
                 "time": slot_dt.time().strftime("%H:%M"),
                 "temperature": prev["temperature"] if prev else None,
-                "temperature1": prev["temperature1"] if prev else None,
+                "pressure": prev["pressure"] if prev else None,
                 "humidity": prev["humidity"] if prev else None,
-                "humidity1": prev["humidity1"] if prev else None,
+                "co2": prev["co2"] if prev else None,
             }
         kept.append(row)
         slot_dt += step
@@ -171,16 +171,16 @@ def range_rows(request, ch):
 @csrf_exempt
 def chart_data(request, ch):
     if ch not in MODEL_BY_CH or not _user_has_access(request.user, ch):
-        return JsonResponse({"labels": [], "temperature": [], "temperature1": [], "humidity": [], "humidity1": []}, status=403)
+        return JsonResponse({"labels": [], "temperature": [], "pressure": [], "humidity": [], "co2": []}, status=403)
 
     Model = MODEL_BY_CH[ch]
     qs = Model.objects.order_by("created_at")  # oldest → newest
     data = {
         "labels": [f"{r.date} {r.time.strftime('%H:%M')}" for r in qs],
         "temperature": [r.temperature for r in qs],
-        "temperature1": [r.temperature1 for r in qs],
+        "pressure": [r.pressure for r in qs],
         "humidity": [r.humidity for r in qs],
-        "humidity1": [r.humidity1 for r in qs],
+        "co2": [r.co2 for r in qs],
     }
     return JsonResponse(data)
 
@@ -199,16 +199,16 @@ def ingest_sensor_data(request, ch):
         return JsonResponse({
             "ok": True,
             "chamber": ch,
-            "expect_json_fields": ["temperature", "temperature1", "humidity", "humidity1"],
+            "expect_json_fields": ["temperature", "pressure", "humidity", "co2"],
             "hint": "POST JSON to this URL with Content-Type: application/json",
             "last": None if not last else {
                 "id": last.id,
                 "date": last.date.isoformat(),
                 "time": last.time.strftime("%H:%M:%S"),
                 "temperature": last.temperature,
-                "temperature1": last.temperature1,
+                "pressure": last.pressure,
                 "humidity": last.humidity,
-                "humidity1": last.humidity1,
+                "co2": last.co2,
                 "created_at": timezone.localtime(last.created_at).isoformat(timespec="seconds"),
             },
         })
@@ -225,16 +225,16 @@ def ingest_sensor_data(request, ch):
     except (UnicodeDecodeError, JSONDecodeError):
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
-    required = ["temperature", "temperature1", "humidity", "humidity1"]
+    required = ["temperature", "pressure", "humidity", "co2"]
     missing = [f for f in required if f not in payload]
     if missing:
         return JsonResponse({"error": f"Missing fields: {', '.join(missing)}"}, status=400)
 
     row = Model.objects.create(
         temperature=float(payload["temperature"]),
-        temperature1=float(payload["temperature1"]),
+        pressure=float(payload["pressure"]),
         humidity=float(payload["humidity"]),
-        humidity1=float(payload["humidity1"]),
+        co2=float(payload["co2"]),
     )
 
     return JsonResponse({
@@ -345,9 +345,9 @@ def _select_rows_by_step_first(qs, start_dt, end_dt, step):
                 "date": ist_time.date().isoformat(),
                 "time": ist_time.strftime("%H:%M"),
                 "temperature": r.temperature,
-                "temperature1": r.temperature1,
+                "pressure": r.pressure,
                 "humidity": r.humidity,
-                "humidity1": r.humidity1,
+                "co2": r.co2,
             }
 
     rows = []
@@ -356,8 +356,8 @@ def _select_rows_by_step_first(qs, start_dt, end_dt, step):
         row = per_minute.get(slot, {
             "date": slot.date().isoformat(),
             "time": slot.strftime("%H:%M"),
-            "temperature": None, "temperature1": None,
-            "humidity": None, "humidity1": None,
+            "temperature": None, "pressure": None,
+            "humidity": None, "co2": None,
         })
         rows.append(row.copy())
         slot += step
@@ -400,14 +400,14 @@ def download_csv(request, ch):
     response.write("\ufeff")  # BOM for Excel
 
     writer = csv.writer(response)
-    writer.writerow(["Date", "Time", "Temperature (°C)", "Temperature1 (°C)", "Humidity (%)", "Humidity1 (%)"])
+    writer.writerow(["Date", "Time", "Temperature (°C)", "pressure (°C)", "Humidity (%)", "co2 (%)"])
     for r in rows:
         writer.writerow([
             r["date"], r["time"],
             "" if r["temperature"]  is None else f'{r["temperature"]:.2f}',
-            "" if r["temperature1"] is None else f'{r["temperature1"]:.2f}',
+            "" if r["pressure"] is None else f'{r["pressure"]:.2f}',
             "" if r["humidity"]     is None else f'{r["humidity"]:.2f}',
-            "" if r["humidity1"]    is None else f'{r["humidity1"]:.2f}',
+            "" if r["co2"]    is None else f'{r["co2"]:.2f}',
         ])
     dbg("CSV: wrote", len(rows), "rows")
     return response
@@ -448,14 +448,14 @@ def download_pdf(request, ch):
     styles = getSampleStyleSheet()
     title = Paragraph(f"Chamber {ch.upper()} — Sensor Data (every {every})", styles["Heading3"])
 
-    data = [["Date", "Time", "Temperature (°C)", "Temperature1 (°C)", "Humidity (%)", "Humidity1 (%)"]]
+    data = [["Date", "Time", "Temperature (°C)", "pressure (°C)", "Humidity (%)", "co2 (%)"]]
     for r in rows:
         data.append([
             r["date"], r["time"],
             "" if r["temperature"]  is None else f'{r["temperature"]:.2f}',
-            "" if r["temperature1"] is None else f'{r["temperature1"]:.2f}',
+            "" if r["pressure"] is None else f'{r["pressure"]:.2f}',
             "" if r["humidity"]     is None else f'{r["humidity"]:.2f}',
-            "" if r["humidity1"]    is None else f'{r["humidity1"]:.2f}',
+            "" if r["co2"]    is None else f'{r["co2"]:.2f}',
         ])
 
     table = Table(data, repeatRows=1)

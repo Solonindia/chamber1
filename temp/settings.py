@@ -37,7 +37,7 @@ ALLOWED_HOSTS = [ '*',
     'chamber-res-amd8embbbrbgezfc.canadacentral-01.azurewebsites.net',
     '127.0.0.1',
     'localhost',
-    "10.54.250.194"
+    "10.54.250.194",
 ]
 
 

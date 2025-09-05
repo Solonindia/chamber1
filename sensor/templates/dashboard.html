@@ -202,15 +202,15 @@
       </div>
 
       <div class="gcard">
-        <div class="gtitle t1">Temperature1 (°C)</div>
+        <div class="gtitle t1">pressure (°C)</div>
         <div class="gauge-analog t1">
-          <svg id="svg-temperature1" viewBox="0 0 200 120">
+          <svg id="svg-pressure" viewBox="0 0 200 120">
             <path class="arc-bg" d="M10,110 A90,90 0 0 1 190,110"></path>
-            <path id="pf-temperature1" class="arc-fill" d="M10,110 A90,90 0 0 1 190,110"></path>
+            <path id="pf-pressure" class="arc-fill" d="M10,110 A90,90 0 0 1 190,110"></path>
           </svg>
-          <div id="n-temperature1" class="needle"></div><div class="hub"></div>
+          <div id="n-pressure" class="needle"></div><div class="hub"></div>
         </div>
-        <div id="v-temperature1" class="gnum t1">--</div>
+        <div id="v-pressure" class="gnum t1">--</div>
       </div>
 
       <div class="gcard">
@@ -226,15 +226,15 @@
       </div>
 
       <div class="gcard">
-        <div class="gtitle h1">Humidity1 (%)</div>
+        <div class="gtitle h1">co2 (%)</div>
         <div class="gauge-analog h1">
-          <svg id="svg-humidity1" viewBox="0 0 200 120">
+          <svg id="svg-co2" viewBox="0 0 200 120">
             <path class="arc-bg" d="M10,110 A90,90 0 0 1 190,110"></path>
-            <path id="pf-humidity1" class="arc-fill" d="M10,110 A90,90 0 0 1 190,110"></path>
+            <path id="pf-co2" class="arc-fill" d="M10,110 A90,90 0 0 1 190,110"></path>
           </svg>
-          <div id="n-humidity1" class="needle"></div><div class="hub"></div>
+          <div id="n-co2" class="needle"></div><div class="hub"></div>
         </div>
-        <div id="v-humidity1" class="gnum h1">--</div>
+        <div id="v-co2" class="gnum h1">--</div>
       </div>
     </div>
 
@@ -266,9 +266,9 @@ function rowHtml(r){
     <td>${r.date}</td>
     <td>${r.time}</td>
     <td class="col-t0">${r.temperature  != null ? Number(r.temperature).toFixed(2) : '--'}</td>
-    <td class="col-t1">${r.temperature1 != null ? Number(r.temperature1).toFixed(2) : '--'}</td>
+    <td class="col-t1">${r.pressure != null ? Number(r.pressure).toFixed(2) : '--'}</td>
     <td class="col-h0">${r.humidity     != null ? Number(r.humidity).toFixed(2) : '--'}</td>
-    <td class="col-h1">${r.humidity1    != null ? Number(r.humidity1).toFixed(2) : '--'}</td>
+    <td class="col-h1">${r.co2    != null ? Number(r.co2).toFixed(2) : '--'}</td>
   </tr>`;
 }
 
@@ -283,8 +283,8 @@ everySel.addEventListener('change', loadTable);
 
 /* ---------- Gauges ---------- */
 const LIMITS = {
-  temperature:{min:0,max:100}, temperature1:{min:0,max:100},
-  humidity:{min:0,max:100}, humidity1:{min:0,max:100},
+  temperature:{min:0,max:100}, pressure:{min:0,max:100},
+  humidity:{min:0,max:100}, co2:{min:0,max:100},
 };
 const ARC_LEN = 283;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -320,12 +320,12 @@ function setGauge(key,value){
 }
 function updateGauges(latest){
   setGauge('temperature',  latest.temperature);
-  setGauge('temperature1', latest.temperature1);
+  setGauge('pressure', latest.pressure);
   setGauge('humidity',     latest.humidity);
-  setGauge('humidity1',    latest.humidity1);
+  setGauge('co2',    latest.co2);
 }
 document.addEventListener('DOMContentLoaded', ()=>{
-  buildTicks('svg-temperature'); buildTicks('svg-temperature1'); buildTicks('svg-humidity'); buildTicks('svg-humidity1');
+  buildTicks('svg-temperature'); buildTicks('svg-pressure'); buildTicks('svg-humidity'); buildTicks('svg-co2');
 });
 
 /* ---------- Refresh cadence ---------- */

@@ -2,21 +2,21 @@ from django.db import models
 from django.utils import timezone
 from django.db.models import Q, CheckConstraint
 
+
 class BaseSensorData(models.Model):
-    # common columns
-    date = models.DateField(db_index=True)
-    time = models.TimeField(db_index=True)
+    date = models.DateField(db_index=True, null=True, blank=True)
+    time = models.TimeField(db_index=True, null=True, blank=True)
 
-    temperature  = models.FloatField()
-    temperature1 = models.FloatField(null=True, blank=True)
-    humidity     = models.FloatField()
-    humidity1    = models.FloatField(null=True, blank=True)
+    temperature = models.FloatField()
+    pressure    = models.FloatField(null=True, blank=True)
+    humidity    = models.FloatField()
+    co2         = models.FloatField(null=True, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    created_at  = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
-        abstract  = True                   # 🔑 no table for base
-        ordering  = ["-date", "-time"]
+        abstract = True
+        ordering = ["-date", "-time"]
         constraints = [
             CheckConstraint(
                 check=Q(temperature__gte=-50) & Q(temperature__lte=150),
@@ -29,10 +29,13 @@ class BaseSensorData(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        # auto-fill if missing
         if not self.date or not self.time:
             now = timezone.localtime()
-            self.date = self.date or now.date()
-            self.time = self.time or now.time().replace(microsecond=0)
+            if not self.date:
+                self.date = now.date()
+            if not self.time:
+                self.time = now.time().replace(microsecond=0)
         return super().save(*args, **kwargs)
 
 
