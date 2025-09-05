@@ -202,7 +202,7 @@
       </div>
 
       <div class="gcard">
-        <div class="gtitle t1">pressure (°C)</div>
+        <div class="gtitle t1">Temperature1 (°C)</div>
         <div class="gauge-analog t1">
           <svg id="svg-pressure" viewBox="0 0 200 120">
             <path class="arc-bg" d="M10,110 A90,90 0 0 1 190,110"></path>
@@ -226,7 +226,7 @@
       </div>
 
       <div class="gcard">
-        <div class="gtitle h1">co2 (%)</div>
+        <div class="gtitle h1">Humidity1 (%)</div>
         <div class="gauge-analog h1">
           <svg id="svg-co2" viewBox="0 0 200 120">
             <path class="arc-bg" d="M10,110 A90,90 0 0 1 190,110"></path>
@@ -277,7 +277,8 @@ async function loadTable(){
   const data = await res.json();
   tb.innerHTML = data.length ? data.map(rowHtml).join('') :
     `<tr><td colspan="6" style="color:#64748b; text-align:center">No rows yet.</td></tr>`;
-  if (data.length) updateGauges(data[0]);   // newest row
+  if (data.length) updateGauges(data[data.length - 1]);  // use latest row
+
 }
 everySel.addEventListener('change', loadTable);
 

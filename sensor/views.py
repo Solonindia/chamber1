@@ -45,6 +45,29 @@ from datetime import datetime
 def _floor_minute(dt):
     return dt.replace(second=0, microsecond=0)
 
+def _select_rows_actual(qs, step):
+    """
+    Walk through queryset (ordered by created_at).
+    Only include real rows, spaced at least `step` apart.
+    """
+    rows = []
+    last_dt = None
+    IST = timezone.get_current_timezone()
+
+    for r in qs:
+        dt = timezone.localtime(r.created_at, IST)
+        if last_dt is None or dt >= last_dt + step:
+            rows.append({
+                "date": dt.date().isoformat(),
+                "time": dt.strftime("%H:%M:%S"),
+                "temperature": r.temperature,
+                "pressure": r.pressure,
+                "humidity": r.humidity,
+                "co2": r.co2,
+            })
+            last_dt = dt
+    return rows
+
 def _select_rows_by_step(qs, start_dt, end_dt, step):
     """
     qs: queryset ordered by created_at ASC (from a single chamber's table)
@@ -129,42 +152,28 @@ def range_rows(request, ch):
     every = request.GET.get("every", "1m")
     step = _parse_span(every)
 
-    qs = Model.objects.order_by("date", "time")  # oldest → newest
+    qs = Model.objects.order_by("created_at")
     if not qs.exists():
         return JsonResponse([], safe=False)
 
-    readings = {(r.date, r.time.replace(second=0, microsecond=0)): r for r in qs}
-    first_row, last_row = qs.first(), qs.last()
+    rows = []
+    last_dt = None
 
-    slot_dt = timezone.make_aware(datetime.combine(first_row.date, first_row.time.replace(second=0, microsecond=0)))
-    last_dt = timezone.make_aware(datetime.combine(last_row.date, last_row.time.replace(second=0, microsecond=0)))
-
-    kept, prev = [], None
-    while slot_dt <= last_dt:
-        key = (slot_dt.date(), slot_dt.time())
-        if key in readings:
-            r = readings[key]
-            row = {
+    for r in qs:
+        dt = timezone.make_aware(datetime.combine(r.date, r.time))
+        # always take the first row, then take a new one only if >= step later
+        if last_dt is None or dt >= last_dt + step:
+            rows.append({
                 "date": r.date.isoformat(),
                 "time": r.time.strftime("%H:%M"),
                 "temperature": r.temperature,
                 "pressure": r.pressure,
                 "humidity": r.humidity,
                 "co2": r.co2,
-            }
-            prev = row
-        else:
-            row = {
-                "date": slot_dt.date().isoformat(),
-                "time": slot_dt.time().strftime("%H:%M"),
-                "temperature": prev["temperature"] if prev else None,
-                "pressure": prev["pressure"] if prev else None,
-                "humidity": prev["humidity"] if prev else None,
-                "co2": prev["co2"] if prev else None,
-            }
-        kept.append(row)
-        slot_dt += step
-    return JsonResponse(kept, safe=False)
+            })
+            last_dt = dt
+
+    return JsonResponse(rows, safe=False)
 
 # ---------------- Chart data API ----------------
 @login_required
@@ -323,47 +332,6 @@ def _query_range(Model, start_dt, end_dt):
         created_at__lte=end_dt
     ).order_by("created_at")
 
-
-# ---------- First-row-per-minute ----------
-import pytz
-from django.utils import timezone
-
-IST = pytz.timezone("Asia/Kolkata")
-
-def _select_rows_by_step_first(qs, start_dt, end_dt, step):
-    """
-    Group by IST minute based on created_at.
-    Take the first row in each minute.
-    """
-    per_minute = {}
-    for r in qs:
-        # convert created_at → IST
-        ist_time = timezone.localtime(r.created_at, IST)
-        slot = ist_time.replace(second=0, microsecond=0)
-        if slot not in per_minute:
-            per_minute[slot] = {
-                "date": ist_time.date().isoformat(),
-                "time": ist_time.strftime("%H:%M"),
-                "temperature": r.temperature,
-                "pressure": r.pressure,
-                "humidity": r.humidity,
-                "co2": r.co2,
-            }
-
-    rows = []
-    slot = start_dt.replace(second=0, microsecond=0)
-    while slot <= end_dt:
-        row = per_minute.get(slot, {
-            "date": slot.date().isoformat(),
-            "time": slot.strftime("%H:%M"),
-            "temperature": None, "pressure": None,
-            "humidity": None, "co2": None,
-        })
-        rows.append(row.copy())
-        slot += step
-    return rows
-
-
 # ---------- CSV Export ----------
 @login_required
 def download_csv(request, ch):
@@ -391,7 +359,8 @@ def download_csv(request, ch):
         dbg("CSV: NO DATA in this window")
         return JsonResponse({"error": "No data available"}, status=404)
 
-    rows = _select_rows_by_step_first(qs, start_dt, end_dt, step)
+    rows = _select_rows_actual(qs, step)
+
 
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = (
@@ -400,7 +369,7 @@ def download_csv(request, ch):
     response.write("\ufeff")  # BOM for Excel
 
     writer = csv.writer(response)
-    writer.writerow(["Date", "Time", "Temperature (°C)", "pressure (°C)", "Humidity (%)", "co2 (%)"])
+    writer.writerow(["Date", "Time", "Temperature (°C)", "Temperature1 (°C)", "Humidity (%)", "Humidity1 (%)"])
     for r in rows:
         writer.writerow([
             r["date"], r["time"],
@@ -438,7 +407,7 @@ def download_pdf(request, ch):
         dbg("PDF: NO DATA in this window")
         return JsonResponse({"error": "No data available"}, status=404)
 
-    rows = _select_rows_by_step_first(qs, start_dt, end_dt, step)
+    rows = _select_rows_actual(qs, step)
 
     response = HttpResponse(content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="Chamber_{ch}_{start_dt.date()}_{end_dt.date()}_{every}.pdf"'
@@ -448,7 +417,7 @@ def download_pdf(request, ch):
     styles = getSampleStyleSheet()
     title = Paragraph(f"Chamber {ch.upper()} — Sensor Data (every {every})", styles["Heading3"])
 
-    data = [["Date", "Time", "Temperature (°C)", "pressure (°C)", "Humidity (%)", "co2 (%)"]]
+    data = [["Date", "Time", "Temperature (°C)", "Temperature1 (°C)", "Humidity (%)", "Humidity1 (%)"]]
     for r in rows:
         data.append([
             r["date"], r["time"],
