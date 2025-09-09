@@ -7,9 +7,9 @@ class BaseSensorData(models.Model):
     date = models.DateField(db_index=True, null=True, blank=True)
     time = models.TimeField(db_index=True, null=True, blank=True)
 
-    temperature = models.FloatField()
+    temperature = models.FloatField(null=True, blank=True)
     pressure    = models.FloatField(null=True, blank=True)
-    humidity    = models.FloatField()
+    humidity    = models.FloatField(null=True, blank=True)
     co2         = models.FloatField(null=True, blank=True)
 
     created_at  = models.DateTimeField(auto_now_add=True, db_index=True)
